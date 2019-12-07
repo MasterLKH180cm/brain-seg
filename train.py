@@ -15,7 +15,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch.utils.data import Dataset
 from torchvision import transforms
-import torchvision.transforms.functional as TF
+#import torchvision.transforms.functional as TF
 import torch.optim as optim
 import glob
 import pdb
@@ -25,10 +25,14 @@ import traceback
 import argparser_brain_seg
 import matplotlib.pyplot as plt
 import sklearn
-import skimage
+from skimage.filters import gaussian
+from skimage.util import random_noise
+from skimage.transform import rotate, resize
+from numpy import fliplr, flipud
 import models
 
 def main(args):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # =============================================================================
 #     imgs_list = glob.glob(r'E:\brain_seg\train_subset\image\*.nii.gz')
 #     labels_list = glob.glob(r'E:\brain_seg\train_subset\label\*.nii.gz')
@@ -36,18 +40,23 @@ def main(args):
 #     labels = []
 #     for i, j in zip(imgs_list,labels_list[0:5]):
 #         imgs += [nib.load(i).get_fdata()]
-#         
+#         print(imgs[-1].shape)
 #         imgs[-1] = imgs[-1]/np.max(imgs[-1])
 # #        fig, ax = plt.subplots()
 # #        im = ax.imshow(imgs[-1][:,:,0],cmap = 'gray')
 #         labels += [nib.load(j).get_fdata()]
 # =============================================================================
-    train_set = MyDataset(r'E:\brain_seg\train_subset\image', r'E:\brain_seg\train_subset\label')
-    test_set = MyDataset(r'E:\brain_seg\test\image', r'E:\brain_seg\test\label')
+    print('===> build dataset ...')
+    train_set = MyDataset(r'E:\brain_seg\train_subset\image', r'E:\brain_seg\train_subset\label',device)
+    test_set = MyDataset(r'E:\brain_seg\test\image', r'E:\brain_seg\test\label',device)
 #    print(train_set[0])
     train_loss = []
+    print('===> build dataloader ...')
     
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    train_loader = torch.utils.data.DataLoader(dataset=train_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=True)
+    test_loader = torch.utils.data.DataLoader(dataset=test_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=True)
+    print('===> basic setting ...')
+    
     model = models.seg_model(args).to(device)
     loss = torch.nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -61,7 +70,7 @@ def main(args):
             
             train_info = 'Epoch: [{0}][{1}/{2}]'.format(epoch, idx+1, len(train_loader))
 
-
+            print(imgs.shape)
             ''' move data to gpu '''
 #            imgs = (imgs - 127.5) / 127.5
 #            imgs = Variable(imgs,requires_grad=True).to(device)
@@ -81,7 +90,7 @@ def main(args):
             print(train_info)#, end="\r"
         if epoch%args.val_epoch == 0:
                 ''' evaluate the model '''
-                acc, iou = evaluate(model, val_loader) 
+                acc, iou = evaluate(model, test_loader) 
                 iou_score += [acc]
     #            writer.add_scalar('val_acc', acc, iters)
                 print('Epoch: [{}] ACC:{}'.format(epoch, acc))
@@ -103,7 +112,7 @@ def save_model(model, save_path):
     torch.save(model.state_dict(),save_path)  
 
 class MyDataset(Dataset):
-    def __init__(self, image_paths, label_paths, train=True):
+    def __init__(self, image_paths, label_paths,device, train=True):
         self.image_paths = image_paths
         self.label_paths = label_paths
         self.files = os.listdir(self.image_paths)
@@ -111,25 +120,25 @@ class MyDataset(Dataset):
         
     def transform(self, image, mask):
         # Resize
-        resize = transforms.Resize(size=(512, 512))
-        image = [resize(img) for img in image]
-        mask = [resize(img) for img in mask]
+        
+        image = resize(image,(512,12))
+        mask = resize(mask,(512,12))
 
         
 
         # Random horizontal flipping
         if random.random() > 0.5:
-            image = [TF.hflip(img) for img in image]
-            mask = [TF.hflip(img) for img in mask]
+            image = flipud(image)
+            mask = flipud(mask)
 
         # Random vertical flipping
         if random.random() > 0.5:
-            image = [TF.vflip(img) for img in image]
-            mask = [TF.vflip(img) for img in mask]
+            image = fliplr(image)
+            mask = fliplr(mask)
 
         # Transform to tensor
-        image = [TF.to_tensor(img) for img in image]
-        mask = [TF.to_tensor(img) for img in mask]
+        image = torch.from_numpy(image.copy())
+        mask = torch.from_numpy(mask.copy())
         return image, mask
     def __len__(self):
        
@@ -141,10 +150,12 @@ class MyDataset(Dataset):
         image = image / np.max(image) * 255
         mask = nib.load(os.path.join(self.label_paths,label_name)).get_fdata()
         mask = mask / np.max(mask) * 255
-        image = [Image.fromarray(img.astype('uint8'),mode='L') for img in image]
-        mask = [Image.fromarray(label.astype('uint8'),mode='L')  for label in mask]
-        x, y = self.transform(image, mask)
-        return x, y
+#        image = [Image.fromarray(img.astype('uint8'),mode='L') for img in image]
+#        mask = [Image.fromarray(label.astype('uint8'),mode='L') for label in mask]
+        image = image.astype('uint8')
+        mask = mask.astype('uint8')
+        x, y = self.transform(image,mask)
+        return x,y
 
 
 

@@ -8,7 +8,7 @@ def arg_parse():
     # Datasets parameters
     parser.add_argument('--data_dir', type=str, default='data', 
                     help="root path to data directory")
-    parser.add_argument('--workers', default=4, type=int,
+    parser.add_argument('--workers', default=0, type=int,
                     help="number of data loading workers (default: 4)")
     
     # training parameters
@@ -18,9 +18,9 @@ def arg_parse():
                     help="num of validation iterations")
     parser.add_argument('--val_epoch', default=1, type=int,
                     help="num of validation iterations")
-    parser.add_argument('--train_batch', default=1024, type=int,
+    parser.add_argument('--train_batch', default=1, type=int,
                     help="train batch size")
-    parser.add_argument('--test_batch', default=32, type=int, 
+    parser.add_argument('--test_batch', default=1, type=int, 
                     help="test batch size")
     parser.add_argument('--lr', default=0.0003, type=float,
                     help="initial learning rate")
