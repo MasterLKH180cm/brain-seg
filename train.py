@@ -30,7 +30,7 @@ from skimage.util import random_noise
 from skimage.transform import rotate, resize
 from numpy import fliplr, flipud
 import models
-
+from misc import runningScore
 def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # =============================================================================
@@ -60,27 +60,52 @@ def main(args):
     model = models.seg_model(args).to(device)
     loss = torch.nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    best_acc = 0
+    best_dice = 0
+    
+    
+    num_cls = 2
+    running_metrics = runningScore(num_cls)
+    
     for epoch in range(1, args.epoch+1):
         print('===> set training mode ...')
         
         model.train()
         
-        for idx, (imgs, labels) in enumerate(train_loader):
-            
-            train_info = 'Epoch: [{0}][{1}/{2}]'.format(epoch, idx+1, len(train_loader))
-
+        for idx, (imgs_filename, labels_filename) in enumerate(train_loader):
+            imgs = []
+            labels = []
+            for img_name, label_name in zip(imgs_filename, labels_filename):
+                image = nib.load(img_name).get_fdata()
+                image = image / np.max(image) * 255
+                mask = nib.load(label_name).get_fdata()
+                mask = mask / np.max(mask) * 255
+                image = image.astype('uint8')
+                mask = mask.astype('uint8')
+                image, mask = transform(image,mask)
+                imgs += [image]
+                labels+= [mask]
+            imgs = torch.Tensor(np.array(imgs))
+            labels = torch.Tensor(np.array(labels))
             print(imgs.shape)
+            imgs = imgs.transpose(1,3).transpose(2,3)
+            labels = labels.transpose(1,3).transpose(2,3)
+            train_info = str(device)+'Epoch: [{0}][{1}/{2}]'.format(epoch, idx+1, len(train_loader))
+            imgs, labels = imgs.squeeze().unsqueeze(1), labels.squeeze().unsqueeze(1)
+            imgs = torch.cat([imgs,imgs,imgs], dim=1)
+#            print(imgs.shape)
+            loader = torch.utils.data.DataLoader(dataset=torch.utils.data.TensorDataset(imgs, labels),batch_size=50,num_workers=args.workers,shuffle=False)
             ''' move data to gpu '''
 #            imgs = (imgs - 127.5) / 127.5
 #            imgs = Variable(imgs,requires_grad=True).to(device)
 #            labels = Variable(labels,requires_grad=True).to(device)
-            
+            seg_loss = 0
             ''' compute loss, backpropagation, update parameters '''
-            seg_loss = loss(model(imgs))
-            optimizer.zero_grad()         
-            seg_loss.backward()               
-            optimizer.step()
+            for img, label in loader:
+                seg_loss = loss(model(img.to(device, dtype=torch.float)),label.to(device, dtype=torch.float))
+#                print(seg_loss)
+                optimizer.zero_grad()         
+                seg_loss.backward()               
+                optimizer.step()
 
             
 #            imageio.imwrite(args.save_dir + '\{:0>5d}.png'.format(count), fake_imgs[0].transpose(0,2).transpose(0,1).detach().cpu().numpy().astype(np.uint8))          
@@ -111,8 +136,34 @@ def main(args):
 def save_model(model, save_path):
     torch.save(model.state_dict(),save_path)  
 
+
+def transform(image, mask):
+    # Resize
+    
+    image = resize(image,(512,512))
+    mask = resize(mask,(512,512))
+
+    
+
+    # Random horizontal flipping
+    if random.random() > 0.5:
+        image = flipud(image)
+        mask = flipud(mask)
+
+    # Random vertical flipping
+    if random.random() > 0.5:
+        image = fliplr(image)
+        mask = fliplr(mask)
+
+    # Transform to tensor
+#    image = torch.from_numpy(image.copy())
+#    mask = torch.from_numpy(mask.copy())
+    return image, mask
+
+
 class MyDataset(Dataset):
     def __init__(self, image_paths, label_paths,device, train=True):
+
         self.image_paths = image_paths
         self.label_paths = label_paths
         self.files = os.listdir(self.image_paths)
@@ -121,8 +172,8 @@ class MyDataset(Dataset):
     def transform(self, image, mask):
         # Resize
         
-        image = resize(image,(512,12))
-        mask = resize(mask,(512,12))
+        image = resize(image,(512,512))
+        mask = resize(mask,(512,512))
 
         
 
@@ -142,20 +193,19 @@ class MyDataset(Dataset):
         return image, mask
     def __len__(self):
        
-        return len(self.image_paths)
+        return len(self.files)
     def __getitem__(self,idx):
+        
         img_name = self.files[idx]
         label_name = self.lables[idx]
-        image = nib.load(os.path.join(self.image_paths,img_name)).get_fdata()
-        image = image / np.max(image) * 255
-        mask = nib.load(os.path.join(self.label_paths,label_name)).get_fdata()
-        mask = mask / np.max(mask) * 255
-#        image = [Image.fromarray(img.astype('uint8'),mode='L') for img in image]
-#        mask = [Image.fromarray(label.astype('uint8'),mode='L') for label in mask]
-        image = image.astype('uint8')
-        mask = mask.astype('uint8')
-        x, y = self.transform(image,mask)
-        return x,y
+#        image = nib.load(os.path.join(self.image_paths,img_name)).get_fdata()
+#        image = image / np.max(image) * 255
+#        mask = nib.load(os.path.join(self.label_paths,label_name)).get_fdata()
+#        mask = mask / np.max(mask) * 255
+#        image = image#.astype('uint8')
+#        mask = mask#.astype('uint8')
+#        x, y = self.transform(image,mask)
+        return os.path.join(self.image_paths,img_name), os.path.join(self.label_paths,label_name)
 
 
 
