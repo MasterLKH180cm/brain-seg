@@ -84,23 +84,24 @@ def main(args):
                 image, mask = transform(image,mask)
                 imgs += [image]
                 labels+= [mask]
-            imgs = torch.Tensor(np.array(imgs))
-            labels = torch.Tensor(np.array(labels))
-            print(imgs.shape)
-            imgs = imgs.transpose(1,3).transpose(2,3)
-            labels = labels.transpose(1,3).transpose(2,3)
-            train_info = str(device)+'Epoch: [{0}][{1}/{2}]'.format(epoch, idx+1, len(train_loader))
-            imgs, labels = imgs.squeeze().unsqueeze(1), labels.squeeze().unsqueeze(1)
-            imgs = torch.cat([imgs,imgs,imgs], dim=1)
+            
+            print(imgs[0].shape)
+#            imgs = imgs.transpose(1,3).transpose(2,3)
+#            labels = labels.transpose(1,3).transpose(2,3)
+            train_info = 'Epoch: [{0}][{1}/{2}]'.format(epoch, idx+1, len(train_loader))
+#            imgs, labels = imgs.squeeze().unsqueeze(1), labels.squeeze().unsqueeze(1)
+#            imgs = torch.cat([imgs,imgs,imgs], dim=1)
 #            print(imgs.shape)
-            loader = torch.utils.data.DataLoader(dataset=torch.utils.data.TensorDataset(imgs, labels),batch_size=50,num_workers=args.workers,shuffle=False)
+#            loader = torch.utils.data.DataLoader(dataset=torch.utils.data.TensorDataset(imgs, labels),batch_size=50,num_workers=args.workers,shuffle=False)
             ''' move data to gpu '''
 #            imgs = (imgs - 127.5) / 127.5
 #            imgs = Variable(imgs,requires_grad=True).to(device)
 #            labels = Variable(labels,requires_grad=True).to(device)
             seg_loss = 0
             ''' compute loss, backpropagation, update parameters '''
-            for img, label in loader:
+            for img, label in zip(imgs, labels):
+                img = img.transpose(0,2).transpose(1,2).unsqueeze(1)
+                label = label.transpose(0,2).transpose(1,2).unsqueeze(1)
                 seg_loss = loss(model(img.to(device, dtype=torch.float)),label.to(device, dtype=torch.float))
 #                print(seg_loss)
                 optimizer.zero_grad()         
@@ -140,8 +141,8 @@ def save_model(model, save_path):
 def transform(image, mask):
     # Resize
     
-    image = resize(image,(512,512))
-    mask = resize(mask,(512,512))
+#    image = resize(image,(512,512))
+#    mask = resize(mask,(512,512))
 
     
 
@@ -156,8 +157,8 @@ def transform(image, mask):
         mask = fliplr(mask)
 
     # Transform to tensor
-#    image = torch.from_numpy(image.copy())
-#    mask = torch.from_numpy(mask.copy())
+    image = torch.from_numpy(image.copy())
+    mask = torch.from_numpy(mask.copy())
     return image, mask
 
 
@@ -188,8 +189,8 @@ class MyDataset(Dataset):
             mask = fliplr(mask)
 
         # Transform to tensor
-        image = torch.from_numpy(image.copy())
-        mask = torch.from_numpy(mask.copy())
+#        image = torch.from_numpy(image.copy())
+#        mask = torch.from_numpy(mask.copy())
         return image, mask
     def __len__(self):
        
