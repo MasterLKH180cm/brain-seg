@@ -60,6 +60,23 @@ def main(args):
     count = 0
 #    imgs = []
 #    label = []
+    for idx, (imgs_filename, labels_filename) in enumerate(train_loader):
+        
+        for img_name, label_name in zip(imgs_filename, labels_filename):
+            
+            image = nib.load(img_name).get_fdata()
+            image = image / np.max(image) * 255
+            mask = nib.load(label_name).get_fdata()
+#            mask = mask / np.max(mask) * 255
+            image = image.astype('uint8')
+            mask = mask.astype('uint8')
+#            imgs += [image]
+#            label += [mask]
+            for i,j in zip(np.transpose(image,(2,0,1)),np.transpose(mask,(2,0,1))):
+                count+=1
+                print(count,end='\r')
+                cv2.imwrite(r'E:\brain_seg\train_subset\train_img\{:0>6d}.png'.format(count),i)
+                cv2.imwrite(r'E:\brain_seg\train_subset\train_label\{:0>6d}.png'.format(count),j)
     for idx, (imgs_filename, labels_filename) in enumerate(test_loader):
         
         for img_name, label_name in zip(imgs_filename, labels_filename):
