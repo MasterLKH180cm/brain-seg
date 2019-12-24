@@ -10,41 +10,36 @@ class seg_model(nn.Module):
         super(seg_model, self).__init__()  
 
         ''' declare layers used in this network'''
-# =============================================================================
-#         self.vgg16 = models.vgg16(pretrained=True)
-#         self.vgg16 = torch.nn.Sequential(*(list(self.vgg16.children())[:-2]))#.to('cuda:0')
-# #        for p in self.vgg16.parameters():
-# #            p.requires_grad = False
-# #        self.fc1 = nn.Linear(1000, 512*11*14)
-#         self.TransConv1 = nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1, bias=True)
-#         self.relu1 = nn.ReLU()
-#         self.TransConv2 = nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1, bias=True)
-#         self.relu2 = nn.ReLU()
-#         self.TransConv3 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1, bias=True)
-#         self.relu3 = nn.ReLU()
-#         self.TransConv4 = nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1, bias=True)
-#         self.relu4 = nn.ReLU()
-#         self.TransConv5 = nn.ConvTranspose2d(32, 2, kernel_size=4, stride=2, padding=1, bias=True)
-#         self.Sigmoid = nn.Sigmoid()
-# =============================================================================
-        self.unet=UNet(in_channels=3, out_channels=1, init_features=32)
-        print(self.unet.parameters())
+        self.vgg16 = models.vgg16(pretrained=True)
+        self.vgg16 = torch.nn.Sequential(*(list(self.vgg16.children())[:-2]))#.to('cuda:0')
+#        for p in self.vgg16.parameters():
+#            p.requires_grad = False
+#        self.fc1 = nn.Linear(1000, 512*11*14)
+        self.TransConv1 = nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1, bias=True)
+        self.relu1 = nn.ReLU()
+        self.TransConv2 = nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1, bias=True)
+        self.relu2 = nn.ReLU()
+        self.TransConv3 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1, bias=True)
+        self.relu3 = nn.ReLU()
+        self.TransConv4 = nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1, bias=True)
+        self.relu4 = nn.ReLU()
+        self.TransConv5 = nn.ConvTranspose2d(32, 2, kernel_size=4, stride=2, padding=1, bias=True)
+        self.Sigmoid = nn.Sigmoid()
+        
     def forward(self, x):
 #        print(x.shape)
-# =============================================================================
-#         x = self.vgg16(x)
-#         x = self.relu1(self.TransConv1(x))
-#         x = self.relu2(self.TransConv2(x))
-#         x = self.relu3(self.TransConv3(x))
-#         x = self.relu4(self.TransConv4(x))
-#         x = self.Sigmoid(self.TransConv5(x))
-# =============================================================================
+        x = self.vgg16(x)
+        x = self.relu1(self.TransConv1(x))
+        x = self.relu2(self.TransConv2(x))
+        x = self.relu3(self.TransConv3(x))
+        x = self.relu4(self.TransConv4(x))
+        x = self.Sigmoid(self.TransConv5(x))
 #        print(x.shape)
         
         
-#        return x
-        return self.unet(x)
+        return x
 
+#self.unet=UNet(in_channels=3, out_channels=1, init_features=32).load_state_dict(torch.load('unet.pt'))
 
 class UNet(nn.Module):
 

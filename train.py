@@ -53,11 +53,11 @@ def main(args):
     print('===> basic setting ...')
     
     model = models.seg_model(args).to(device)
-    loss = nn.BCELoss()
+    loss = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     best_iou = 0
     
-    
+    unet = models.UNet().load_state_dict(torch.load('unet.pt'))
     num_cls = 2
     running_metrics = runningScore(num_cls)
     iou_score = []
@@ -164,7 +164,7 @@ class MyDataset(Dataset):
         
         # Transform to tensor
         image = torch.from_numpy(image.copy()).to(dtype = torch.float)
-        mask = torch.from_numpy(mask.copy()).to(dtype = torch.float)
+        mask = torch.from_numpy(mask.copy()).to(dtype = torch.long)
         
         return image, mask
     def __len__(self):
