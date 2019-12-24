@@ -8,21 +8,21 @@ def arg_parse():
     # Datasets parameters
     parser.add_argument('--data_dir', type=str, default='data', 
                     help="root path to data directory")
-    parser.add_argument('--workers', default=0, type=int,
+    parser.add_argument('--workers', default=4, type=int,
                     help="number of data loading workers (default: 4)")
     
     # training parameters
     parser.add_argument('--gpu', default=1, type=int, 
                     help='In homework, please always set to 0')
-    parser.add_argument('--epoch', default=500, type=int,
+    parser.add_argument('--epoch', default=50, type=int,
                     help="num of validation iterations")
     parser.add_argument('--val_epoch', default=1, type=int,
                     help="num of validation iterations")
-    parser.add_argument('--train_batch', default=1, type=int,
+    parser.add_argument('--train_batch', default=8, type=int,
                     help="train batch size")
-    parser.add_argument('--test_batch', default=1, type=int, 
+    parser.add_argument('--test_batch', default=128, type=int, 
                     help="test batch size")
-    parser.add_argument('--lr', default=0.0003, type=float,
+    parser.add_argument('--lr', default=0.001, type=float,
                     help="initial learning rate")
     parser.add_argument('--weight-decay', default=0.0002, type=float,
                     help="initial learning rate")
