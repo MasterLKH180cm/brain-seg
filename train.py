@@ -31,6 +31,7 @@ from skimage.transform import rotate, resize
 from numpy import fliplr, flipud
 import models
 from misc import runningScore
+from ranger import Ranger
 def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     np.random.seed(args.random_seed)
@@ -40,92 +41,119 @@ def main(args):
     '''create directory to save trained model and other info'''
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
-
+    
+    
+#    train_img_list = glob.glob(r'.\train_subset\image\*.nii.gz')
+#    train_seg_list = glob.glob(r'.\train_subset\label\*.nii.gz')
+#    val_img_list = glob.glob(r'.\test\image\*.nii.gz')
+#    val_seg_list = glob.glob(r'.\test\label\*.nii.gz')
     print('===> build dataset ...')
-    train_set = MyDataset(r'E:\brain_seg\train_subset\train_img', r'E:\brain_seg\train_subset\train_label',device)
-    test_set = MyDataset(r'E:\brain_seg\train_subset\test_img', r'E:\brain_seg\train_subset\test_label',device)
+    train_set = MyDataset(r'E:\brain_seg\train_subset\image', r'E:\brain_seg\train_subset\label',device)
+    test_set = MyDataset(r'E:\brain_seg\test\image', r'E:\brain_seg\test\label',device)
 #    print(train_set[0])
     train_loss = []
     print('===> build dataloader ...')
     
     train_loader = torch.utils.data.DataLoader(dataset=train_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset=test_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=True)
+    test_loader = torch.utils.data.DataLoader(dataset=test_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=False)
     print('===> basic setting ...')
     
-    model = models.seg_model(args).to(device)
-    loss = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+#    model = models.seg_model(args).to(device)
+    model = models.UNet(in_channels=3, init_features=32, out_channels=1).to(device)#
+    model.load_state_dict(torch.load('unet.pt'))
+#    print(model)
+    loss = DiceLoss()
+#    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = Ranger(model.parameters(), lr=args.lr)
     best_iou = 0
     
-    unet = models.UNet().load_state_dict(torch.load('unet.pt'))
+    
     num_cls = 2
     running_metrics = runningScore(num_cls)
     iou_score = []
-    
+    threshold = torch.tensor([0.5]).to(device,dtype = torch.float)
     for epoch in range(1, args.epoch+1):
         print('===> set training mode ...')
         
         model.train()
-        
+        epoch_loss = 0
         for idx, (imgs, labels) in enumerate(train_loader):
             
-            train_info = 'Epoch: [{0}][{1}/{2}]'.format(0, idx+1, len(train_loader))
+            train_info = 'Epoch: [{0}][{1}/{2}]'.format(epoch, idx+1, len(train_loader))
+            imgs = imgs.transpose(1,3).transpose(2,3)
+            labels = labels.transpose(1,3).transpose(2,3)
+            img_height = imgs.size()[1]
             
-#            seg_loss = Variable(torch.tensor([0.]),requires_grad=True)
-            ''' move data to gpu '''
-#            imgs = Variable(imgs,requires_grad=True).to(device)
-#            labels = Variable(labels,requires_grad=False).to(device)
-            imgs, labels = imgs.to(device), labels.to(device)
-#            print('===> batch{0}'.format(idx))
-            pred = model(imgs)
-            
-            seg_loss = loss(pred,labels)
-            
-#            optimizer.zero_grad()
-            
-#            print('===> backward')
-            
-            seg_loss.backward() 
-#            print('===> step')              
-            optimizer.step()
-            for i in range(args.train_batch):
-                cv2.imwrite(r'E:\brain_seg\\test{0}.png'.format(i),pred[i].argmax(0).cpu().numpy().astype(np.uint8)*255)
-#            print('===> append loss')
-            train_loss += [seg_loss.data]
-            train_info += 'Segmentation loss: {:.12f}'.format(seg_loss.data.cpu().numpy())
-            print(train_info)#, end="\r"
-        model.eval()
-        for idx, (imgs, labels) in enumerate(test_loader):
-                ''' evaluate the model '''
-                pred = model(imgs.to(device)).cpu()
-                iou = mean_iou_score(pred, labels)
-                iou_score += [iou.item()]
-    #            writer.add_scalar('val_acc', acc, iters)
-                print('Epoch: [{}] iou:{}'.format(epoch, iou))
+            imgs = torch.cat((imgs[:,0,:,:].unsqueeze(0),imgs,imgs[:,-1,:,:].unsqueeze(0)),dim=1)
+            seg_loss = torch.tensor(0.,requires_grad=True).to(device)
+            for img_idx in range(img_height):
                 
-                ''' save best model '''
-                if iou > best_iou:
-                    save_model(model, os.path.join(args.save_dir, 'model_best.h5'))
-                    best_iou = iou
+                label = labels[:,img_idx,:,:].to(device,dtype = torch.long)
 
+                img = imgs[:,img_idx:img_idx+3,:,:].to(device,dtype = torch.float)
+                
+                pred = model(img)
+                
+                seg_loss = loss(pred,label)/img_height
+                seg_loss.backward()
+                epoch_loss = seg_loss.item()
+                torch.cuda.empty_cache()
+                print('loss = '+ str(seg_loss.item()), end="\r")
+            
+            optimizer.step()
+            optimizer.zero_grad()
+            
+            
+            train_loss += [epoch_loss]
+            train_info += 'Segmentation loss: {:.12f}'.format(seg_loss.data.cpu().numpy())
+            print(train_info)
+#            print("                                                                         ", end="\r")
+        
+        
+        if epoch%args.val_epoch == 0:
+            model.eval()
+            
+            iou = 0.
+            for idx, (imgs, labels) in enumerate(test_loader):
+                pred = []
+                
+                imgs = imgs.transpose(1,3).transpose(2,3)
+            
+    #            1 * 66 * 128 * 128
+                labels = labels.transpose(1,3).transpose(2,3)
+                tmp = imgs.size()[1]
+                imgs = torch.cat((imgs[:,0,:,:].unsqueeze(0),imgs,imgs[:,-1,:,:].unsqueeze(0)),dim=1)
+                
+                for img_idx in range(tmp):
+                    output = model(imgs[:,img_idx:img_idx+3,:,:].to(device,dtype = torch.float))
+                    output = (output>threshold).to(device,dtype = torch.float)*1
+                    output = output.cpu().detach().numpy()
+#                    print(np.unique(output))
+                    pred += [output]
+                    
+                iou += mean_iou_score(np.concatenate(pred,axis=1),labels.detach().numpy())
+            iou /= (idx+1)
+            iou_score += [iou]    
+            print('Epoch: [{}] iou:{}'.format(epoch, iou))
+            if iou > best_iou:
+                save_model(model, os.path.join(args.save_dir, 'model_best.h5'))
+                best_iou = iou
+                
         save_model(model, os.path.join(args.save_dir, 'model'+str(epoch)+'.h5'))
-
-    plt.figure()
-    plt.plot(range(1,len(train_loss)+1),train_loss,'-')
-    plt.xlabel("iteration")
-    plt.ylabel("loss")
-    plt.title("training loss")
-    plt.show()
-    plt.savefig(os.path.join(args.save_dir,'Loss.jpg'))
-    
-    plt.figure()
-    plt.plot(range(1,len(iou_score)+1),iou_score,'-')
-    plt.xlabel("epoch")
-    plt.ylabel("iou_score")
-    plt.title("iou_score")
-    plt.show()
-    plt.savefig(os.path.join(args.save_dir,'iou_score.jpg'))
-
+        
+        plt.plot(range(1,len(train_loss)+1),train_loss,'-')
+        plt.xlabel("iteration")
+        plt.ylabel("loss")
+        plt.title("training loss")
+        plt.savefig(os.path.join(args.save_dir,'Loss.png'))
+        plt.clf()
+        
+        plt.plot(range(1,len(iou_score)+1),iou_score,'-')
+        plt.xlabel("epoch")
+        plt.ylabel("iou_score")
+        plt.title("iou_score")
+        plt.savefig(os.path.join(args.save_dir,'iou_score.png'))
+        plt.clf()
 
 def save_model(model, save_path):
     torch.save(model.state_dict(),save_path)  
@@ -139,26 +167,17 @@ class MyDataset(Dataset):
 
         self.image_paths = image_paths
         self.label_paths = label_paths
-        self.files = os.listdir(self.image_paths)
-        self.lables = os.listdir(self.label_paths)
+        self.files = os.listdir(self.image_paths)#[:2]
+        self.lables = os.listdir(self.label_paths)#[:2]
+        self.device = device
         
     def transform(self, image, mask):
         # Resize
         
-        image = cv2.resize(image,(512,512))
-        mask = cv2.resize(mask,(512,512))
+        image = cv2.resize(image,(128,128))
+        mask = cv2.resize(mask,(128,128))
         
-        
-
-        # Random horizontal flipping
-#        if random.random() > 0.5:
-#            image = flipud(image)
-#            mask = flipud(mask)
-
-#        # Random vertical flipping
-#        if random.random() > 0.5:
-#            image = fliplr(image)
-#            mask = fliplr(mask)
+    
         image = np.stack([image, gaussian(image), random_noise(image)], axis=0)
 #        mask = np.stack([mask, mask, mask], axis=0)
         
@@ -174,15 +193,17 @@ class MyDataset(Dataset):
         
         img_name = self.files[idx]
         label_name = self.lables[idx]
-#        image = nib.load(os.path.join(self.image_paths,img_name)).get_fdata()
-#        image = image / np.max(image) * 255
-#        mask = nib.load(os.path.join(self.label_paths,label_name)).get_fdata()
-#        mask = mask / np.max(mask) * 255
-#        image = image#.astype('uint8')
-#        mask = mask#.astype('uint8')
-#        x, y = self.transform(image,mask)
-        img, mask = cv2.imread(os.path.join(self.image_paths,img_name), cv2.IMREAD_GRAYSCALE), cv2.imread(os.path.join(self.label_paths,label_name), cv2.IMREAD_GRAYSCALE)
-        return self.transform(img,mask)
+        image = nib.load(os.path.join(self.image_paths,img_name)).get_fdata()
+        image = cv2.resize(image,(128,128))
+        image = image / np.max(image) * 255.
+        mask = nib.load(os.path.join(self.label_paths,label_name)).get_fdata()
+        mask = cv2.resize(mask,(128,128))
+        mask = mask / np.max(mask)
+#        print(np.unique(mask))
+        
+        _,mask = cv2.threshold(mask,0,1,cv2.THRESH_BINARY)
+        image, mask = torch.tensor(image), torch.tensor(mask)
+        return image, mask
 
 def mean_iou_score(pred, labels, num_classes=2):
     '''
@@ -195,10 +216,13 @@ def mean_iou_score(pred, labels, num_classes=2):
         tp = np.sum((pred == i) * (labels == i))
         iou = tp / (tp_fp + tp_fn - tp)
         mean_iou += iou / num_classes
+#        print(pred.shape,labels.shape)
+#        print(tp_fp , tp_fn , tp)
         print('class #%d : %1.5f'%(i, iou))
     print('\nmean_iou: %f\n' % mean_iou)
 
     return mean_iou
+
 
 class DiceLoss(nn.Module):
 
@@ -207,12 +231,14 @@ class DiceLoss(nn.Module):
         self.smooth = 1.0
 
     def forward(self, y_pred, y_true):
-        assert y_pred.size() == y_true.size()
-        y_pred = y_pred[:, 0].contiguous().view(-1)
-        y_true = y_true[:, 0].contiguous().view(-1)
+#        assert y_pred.size() == y_true.size()
+#        y_pred = y_pred.argmax(1)
+#        y_pred = y_pred[:, 0].contiguous().view(-1)
+#        y_true = y_true[:, 0].contiguous().view(-1)
+#        print(np.unique(y_pred.cpu().detach().numpy()))
         intersection = (y_pred * y_true).sum()
-        dsc = (2. * intersection + self.smooth) / (
-            y_pred.sum() + y_true.sum() + self.smooth
+        dsc = (10. * intersection + self.smooth) / (
+            y_pred.sum() + y_true.sum() + self.smooth + 8. * intersection
         )
         return 1. - dsc
 

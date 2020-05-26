@@ -53,8 +53,8 @@ def main(args):
 
     print('===> build dataloader ...')
     
-    train_loader = torch.utils.data.DataLoader(dataset=train_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset=test_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=True)
+    train_loader = torch.utils.data.DataLoader(dataset=train_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=False)
+    test_loader = torch.utils.data.DataLoader(dataset=test_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=False)
     print('===> basic setting ...')
     
     count = 0
@@ -67,16 +67,19 @@ def main(args):
             image = nib.load(img_name).get_fdata()
             image = image / np.max(image) * 255
             mask = nib.load(label_name).get_fdata()
-#            mask = mask / np.max(mask) * 255
+            mask = mask / np.max(mask) * 255
             image = image.astype('uint8')
             mask = mask.astype('uint8')
 #            imgs += [image]
 #            label += [mask]
-            for i,j in zip(np.transpose(image,(2,0,1)),np.transpose(mask,(2,0,1))):
+            img = np.transpose(image,(2,0,1))
+            img = np.concatenate((np.expand_dims(img[0], axis=0), img, np.expand_dims(img[-1],axis=0)),axis=0)
+            
+            for i,j in zip(img,np.transpose(mask,(2,0,1))):
                 count+=1
                 print(count,end='\r')
-                cv2.imwrite(r'E:\brain_seg\train_subset\train_img\{:0>6d}.png'.format(count),i)
-                cv2.imwrite(r'E:\brain_seg\train_subset\train_label\{:0>6d}.png'.format(count),j)
+                cv2.imwrite(r'E:\brain_seg\train_img\{:0>6d}.png'.format(count),i)
+                cv2.imwrite(r'E:\brain_seg\train_label\{:0>6d}.png'.format(count),j)
     for idx, (imgs_filename, labels_filename) in enumerate(test_loader):
         
         for img_name, label_name in zip(imgs_filename, labels_filename):
@@ -84,16 +87,18 @@ def main(args):
             image = nib.load(img_name).get_fdata()
             image = image / np.max(image) * 255
             mask = nib.load(label_name).get_fdata()
-#            mask = mask / np.max(mask) * 255
+            mask = mask / np.max(mask) * 255
             image = image.astype('uint8')
             mask = mask.astype('uint8')
 #            imgs += [image]
 #            label += [mask]
+            img = np.transpose(image,(2,0,1))
+            img = np.concatenate((np.expand_dims(img[0], axis=0), img, np.expand_dims(img[-1],axis=0)),axis=0)
             for i,j in zip(np.transpose(image,(2,0,1)),np.transpose(mask,(2,0,1))):
                 count+=1
                 print(count,end='\r')
-                cv2.imwrite(r'E:\brain_seg\train_subset\test_img\{:0>6d}.png'.format(count),i)
-                cv2.imwrite(r'E:\brain_seg\train_subset\test_label\{:0>6d}.png'.format(count),j)
+                cv2.imwrite(r'E:\brain_seg\test_img\{:0>6d}.png'.format(count),i)
+                cv2.imwrite(r'E:\brain_seg\test_label\{:0>6d}.png'.format(count),j)
 
 
 

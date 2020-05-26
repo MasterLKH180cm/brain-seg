@@ -16,10 +16,12 @@ def arg_parse():
                     help='In homework, please always set to 0')
     parser.add_argument('--epoch', default=50, type=int,
                     help="num of validation iterations")
-    parser.add_argument('--val_epoch', default=1, type=int,
+    parser.add_argument('--val_epoch', default=-1, type=int,
                     help="num of validation iterations")
-    parser.add_argument('--train_batch', default=8, type=int,
+    parser.add_argument('--train_batch', default=1, type=int,
                     help="train batch size")
+    parser.add_argument('--accumulation_steps', default=1, type=int,
+                    help="accumulation_steps size")
     parser.add_argument('--test_batch', default=128, type=int, 
                     help="test batch size")
     parser.add_argument('--lr', default=0.001, type=float,
