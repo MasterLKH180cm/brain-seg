@@ -32,6 +32,7 @@ from numpy import fliplr, flipud
 import models
 from misc import runningScore
 from ranger import Ranger
+import torchvision.models as tvmodels
 def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     np.random.seed(args.random_seed)
@@ -58,11 +59,12 @@ def main(args):
     test_loader = torch.utils.data.DataLoader(dataset=test_set,batch_size=args.train_batch,num_workers=args.workers,shuffle=False)
     print('===> basic setting ...')
     
-#    model = models.seg_model(args).to(device)
+#    model = tvmodels.segmentation.deeplabv3_resnet101(num_classes = 2).to(device)
     model = models.UNet(in_channels=3, init_features=32, out_channels=1).to(device)#
     model.load_state_dict(torch.load('unet.pt'))
 #    print(model)
-    loss = DiceLoss()
+    loss_1 = DiceLoss()
+    loss_2 = BCELoss()
 #    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     optimizer = Ranger(model.parameters(), lr=args.lr)
     best_iou = 0
@@ -94,7 +96,7 @@ def main(args):
                 
                 pred = model(img)
                 
-                seg_loss = loss(pred,label)/img_height
+                seg_loss = loss_1(pred,label)/img_height + loss_2(pred,label)/img_height
                 seg_loss.backward()
                 epoch_loss = seg_loss.item()
                 torch.cuda.empty_cache()
@@ -194,10 +196,10 @@ class MyDataset(Dataset):
         img_name = self.files[idx]
         label_name = self.lables[idx]
         image = nib.load(os.path.join(self.image_paths,img_name)).get_fdata()
-        image = cv2.resize(image,(128,128))
+        image = cv2.resize(image,(256,256))
         image = image / np.max(image) * 255.
         mask = nib.load(os.path.join(self.label_paths,label_name)).get_fdata()
-        mask = cv2.resize(mask,(128,128))
+        mask = cv2.resize(mask,(256,256))
         mask = mask / np.max(mask)
 #        print(np.unique(mask))
         
@@ -222,7 +224,19 @@ def mean_iou_score(pred, labels, num_classes=2):
     print('\nmean_iou: %f\n' % mean_iou)
 
     return mean_iou
+class BCELoss(nn.Module):
 
+    def __init__(self):
+        super(BCELoss, self).__init__()
+       
+
+    def forward(self, logits, true, pos_weight=None):
+        loss = F.binary_cross_entropy_with_logits(
+            logits.squeeze(0).float(),
+            true.float(),
+            pos_weight=pos_weight,
+        )
+        return loss
 
 class DiceLoss(nn.Module):
 
